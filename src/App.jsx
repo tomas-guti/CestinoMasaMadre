@@ -447,6 +447,7 @@ function Admin({ onLogout }) {
   const [formError, setFormError] = useState("");
   const [savingProduct, setSavingProduct] = useState(false);
   const [updatingOrders, setUpdatingOrders] = useState({});
+  const [deletingOrders, setDeletingOrders] = useState({});
 
   useEffect(() => {
     const controller = new AbortController();
@@ -621,6 +622,23 @@ function Admin({ onLogout }) {
     }
   };
 
+  const deleteOrder = async (order) => {
+    if (!window.confirm("¿Estás seguro de eliminar permanentemente este pedido?")) return;
+
+    setOrdersError("");
+    setDeletingOrders((current) => ({ ...current, [order.id_pedido]: true }));
+    try {
+      await api.delete(`/api/pedidos/${order.id_pedido}`);
+      setOrderReload((current) => current + 1);
+    } catch (error) {
+      setOrdersError(
+        error.response?.data?.message || "No se pudo eliminar el pedido.",
+      );
+    } finally {
+      setDeletingOrders((current) => ({ ...current, [order.id_pedido]: false }));
+    }
+  };
+
   return (
     <main className="admin-page">
       <div className="admin-heading">
@@ -717,7 +735,7 @@ function Admin({ onLogout }) {
           ) : (
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Pedido</th><th>Nombre</th><th>Email</th><th>Calle</th><th>Número</th><th>Comuna</th><th>Teléfono</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Pedido</th><th>Nombre</th><th>Email</th><th>Despacho</th><th>Teléfono</th><th>Fecha</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
                 <tbody>
                   {orders.map((order) => {
                     const statuses = orderStatuses.includes(order.estado)
@@ -728,9 +746,7 @@ function Admin({ onLogout }) {
                         <td><strong>#{order.id_pedido}</strong></td>
                         <td>{order.nombre_cliente}</td>
                         <td>{order.email}</td>
-                        <td>{order.calle}</td>
-                        <td>{order.numero}</td>
-                        <td>{order.comuna}</td>
+                        <td>{`${order.calle} ${order.numero}, ${order.comuna}`}</td>
                         <td>{order.telefono}</td>
                         <td>{formatOrderDate(order.fecha)}</td>
                         <td>{money(order.total)}</td>
@@ -739,11 +755,20 @@ function Admin({ onLogout }) {
                             className="status-select"
                             aria-label={`Estado del pedido ${order.id_pedido}`}
                             value={order.estado}
-                            disabled={Boolean(updatingOrders[order.id_pedido])}
+                            disabled={Boolean(updatingOrders[order.id_pedido] || deletingOrders[order.id_pedido])}
                             onChange={(event) => updateOrderStatus(order, event.target.value)}
                           >
                             {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
                           </select>
+                        </td>
+                        <td>
+                          <button
+                            className="delete-button order-delete-button"
+                            disabled={Boolean(deletingOrders[order.id_pedido] || updatingOrders[order.id_pedido])}
+                            onClick={() => deleteOrder(order)}
+                          >
+                            {deletingOrders[order.id_pedido] ? "Eliminando..." : "Eliminar"}
+                          </button>
                         </td>
                       </tr>
                     );

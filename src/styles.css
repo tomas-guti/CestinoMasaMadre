@@ -201,6 +201,9 @@ td strong { color: #37342d; font-size: 10px; font-weight: 600; }
 .product-actions { display: flex; align-items: center; gap: 7px; }
 .delete-button { min-width: 65px; height: 29px; border: 1px solid #e8e5dc; background: transparent; color: #9a5b48; font-size: 9px; cursor: pointer; }
 .delete-button:hover { border-color: #b8755d; }
+.order-delete-button { border-color: #b94a3c; background: #b94a3c; color: white; }
+.order-delete-button:hover { border-color: #96382d; background: #96382d; }
+.order-delete-button:disabled { opacity: .6; cursor: not-allowed; }
 .category-pill { padding: 5px 8px; background: #f1efe8; color: #746e60; font-size: 9px; }
 .stock-input { width: 62px; height: 30px; border: 1px solid #e2ded4; background: #fffefa; padding: 0 7px; color: var(--ink); font-size: 10px; }
 .stock-input[aria-invalid="true"] { border-color: #a55337; }
