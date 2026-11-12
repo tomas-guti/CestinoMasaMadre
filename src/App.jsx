@@ -1,17 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
   CircleUserRound,
   Clock3,
+  LogOut,
   Minus,
   Plus,
   ShoppingBag,
   Trash2,
   X,
 } from "lucide-react";
+import api from "./api.js";
 
 const initialProducts = [
   {
@@ -106,12 +107,6 @@ function Header({ view, cartCount, onNavigate, onOpenCart }) {
           >
             Catálogo
           </button>
-          <button
-            className={view === "admin" ? "nav-link active" : "nav-link"}
-            onClick={() => onNavigate("admin")}
-          >
-            Admin
-          </button>
         </nav>
         <button className="cart-trigger" onClick={onOpenCart} aria-label={`Abrir carrito, ${cartCount} productos`}>
           <ShoppingBag size={19} strokeWidth={1.7} />
@@ -155,7 +150,7 @@ function ProductCard({ product, onAdd }) {
   );
 }
 
-function Catalog({ products, onAdd }) {
+function Catalog({ products, onAdd, loading, error, onRetry }) {
   const [category, setCategory] = useState("Todos");
   const categories = ["Todos", "Panes", "Pasteles"];
   const filteredProducts =
@@ -204,13 +199,26 @@ function Catalog({ products, onAdd }) {
               </button>
             ))}
           </div>
-          <span className="result-count">{filteredProducts.length} productos</span>
+          <span className="result-count">
+            {loading ? "Cargando..." : `${filteredProducts.length} productos`}
+          </span>
         </div>
-        <div className="product-grid">
-          {filteredProducts.map((product) => (
-            <ProductCard key={product.id} product={product} onAdd={onAdd} />
-          ))}
-        </div>
+        {loading ? (
+          <p className="catalog-status" role="status">Cargando productos...</p>
+        ) : error ? (
+          <div className="catalog-status catalog-error" role="alert">
+            <p>{error}</p>
+            <button className="outline-button small-outline" onClick={onRetry}>Reintentar</button>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <p className="catalog-status">No hay productos disponibles en esta categoría.</p>
+        ) : (
+          <div className="product-grid">
+            {filteredProducts.map((product) => (
+              <ProductCard key={product.id} product={product} onAdd={onAdd} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="promise-strip">
@@ -361,7 +369,7 @@ function Checkout({ cart, onBack, onPayment }) {
   );
 }
 
-function Admin({ products, onUpdateStock }) {
+function Admin({ products, onUpdateStock, onLogout }) {
   const [section, setSection] = useState("Inventario");
   const [draftStocks, setDraftStocks] = useState(() =>
     Object.fromEntries(products.map((product) => [product.id, String(product.stock)])),
@@ -389,7 +397,10 @@ function Admin({ products, onUpdateStock }) {
           <h1>Panel de administración</h1>
           <p>Gestiona el día a día de Cestino.</p>
         </div>
-        <div className="admin-user"><CircleUserRound size={18} /><span>Administrador</span><ChevronDown size={15} /></div>
+        <div className="admin-actions">
+          <div className="admin-user"><CircleUserRound size={18} /><span>Administrador</span></div>
+          <button className="outline-button small-outline" onClick={onLogout}><LogOut size={14} /> Cerrar sesión</button>
+        </div>
       </div>
       <div className="admin-tabs">
         {["Inventario", "Órdenes"].map((item) => (
@@ -482,12 +493,43 @@ function PaymentOverlay() {
 }
 
 function App() {
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState("");
+  const [catalogReload, setCatalogReload] = useState(0);
   const [cart, setCart] = useState([]);
   const [view, setView] = useState("catalog");
   const [cartOpen, setCartOpen] = useState(false);
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    const loadProducts = async () => {
+      setProductsLoading(true);
+      setProductsError("");
+      try {
+        const response = await api.get("/api/productos", { signal: controller.signal });
+        if (active) setProducts(response.data);
+      } catch (error) {
+        if (active) {
+          setProductsError(
+            error.response?.data?.message || "No se pudo cargar el catálogo. Inténtalo nuevamente.",
+          );
+        }
+      } finally {
+        if (active) setProductsLoading(false);
+      }
+    };
+
+    loadProducts();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [catalogReload]);
 
   const cartCount = useMemo(
     () => cart.reduce((sum, item) => sum + item.cantidad, 0),
@@ -542,8 +584,8 @@ function App() {
     }, 2000);
   };
 
-  const navigate = (destination) => {
-    setView(destination);
+  const navigate = () => {
+    setView("catalog");
     setNotice("");
   };
 
@@ -551,9 +593,16 @@ function App() {
     <div className="app">
       <div className="announcement"><span>Horneamos cada mañana en Santiago</span><span>Pedidos hasta las 18:00 <ArrowRight size={13} /></span></div>
       <Header view={view} cartCount={cartCount} onNavigate={navigate} onOpenCart={() => setCartOpen(true)} />
-      {view === "catalog" && <Catalog products={products} onAdd={addToCart} />}
+      {view === "catalog" && (
+        <Catalog
+          products={products}
+          onAdd={addToCart}
+          loading={productsLoading}
+          error={productsError}
+          onRetry={() => setCatalogReload((current) => current + 1)}
+        />
+      )}
       {view === "checkout" && <Checkout cart={cart} onBack={() => { setView("catalog"); setCartOpen(true); }} onPayment={startPayment} />}
-      {view === "admin" && <Admin products={products} onUpdateStock={updateStock} />}
       <footer className="site-footer">
         <Brand onClick={() => navigate("catalog")} />
         <span>Pan hecho con tiempo, desde 2018.</span>
@@ -572,6 +621,148 @@ function App() {
       {paying && <PaymentOverlay />}
     </div>
   );
+}
+
+const tokenStorageKey = "cestino_admin_token";
+
+function AdminLogin({ onLogin, error, submitting }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = (event) => {
+    event.preventDefault();
+    onLogin(email, password);
+  };
+
+  return (
+    <main className="admin-login-page">
+      <form className="admin-login-card" onSubmit={submit}>
+        <span className="eyebrow">Acceso restringido</span>
+        <h1>Administración</h1>
+        <p>Inicia sesión con las credenciales autorizadas para continuar.</p>
+        <label className="field">
+          <span>Correo electrónico</span>
+          <input
+            type="email"
+            autoComplete="username"
+            required
+            maxLength={254}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Contraseña</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            required
+            maxLength={128}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        {error && <p className="admin-login-error" role="alert">{error}</p>}
+        <button className="primary-button full-button" type="submit" disabled={submitting}>
+          {submitting ? "Validando..." : "Iniciar sesión"}
+        </button>
+        <a className="admin-back-link" href="/">Volver a la tienda</a>
+      </form>
+    </main>
+  );
+}
+
+export function AdminApp() {
+  const [token, setToken] = useState(() => localStorage.getItem(tokenStorageKey));
+  const [authenticated, setAuthenticated] = useState(false);
+  const [validating, setValidating] = useState(Boolean(token));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [products, setProducts] = useState(initialProducts);
+
+  useEffect(() => {
+    if (!token) {
+      setAuthenticated(false);
+      setValidating(false);
+      return undefined;
+    }
+
+    let active = true;
+    let expirationTimer;
+    setValidating(true);
+    api.get("/api/admin/session")
+      .then((result) => {
+        if (active) {
+          setAuthenticated(true);
+          setError("");
+          expirationTimer = window.setTimeout(() => {
+            localStorage.removeItem(tokenStorageKey);
+            setToken(null);
+            setAuthenticated(false);
+            setError("La sesión expiró. Inicia sesión nuevamente.");
+          }, Math.max(result.data.user.expiresAt - Date.now(), 0));
+        }
+      })
+      .catch((requestError) => {
+        if (active) {
+          localStorage.removeItem(tokenStorageKey);
+          setToken(null);
+          setAuthenticated(false);
+          setError(
+            requestError.response?.data?.message ||
+              "No se pudo validar la sesión. Inicia sesión nuevamente.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setValidating(false);
+      });
+
+    return () => {
+      active = false;
+      window.clearTimeout(expirationTimer);
+    };
+  }, [token]);
+
+  const login = async (email, password) => {
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await api.post("/api/auth/login", { email, password });
+      localStorage.setItem(tokenStorageKey, response.data.token);
+      setToken(response.data.token);
+    } catch (requestError) {
+      setError(
+        requestError.response?.data?.message ||
+          "No se pudo conectar con el servidor.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem(tokenStorageKey);
+    setToken(null);
+    setAuthenticated(false);
+    setError("");
+  };
+
+  const updateStock = (id, stock) => {
+    setProducts((current) =>
+      current.map((product) => product.id === id ? { ...product, stock } : product),
+    );
+  };
+
+  if (validating) {
+    return <main className="admin-login-page" role="status">Validando acceso...</main>;
+  }
+
+  if (!authenticated) {
+    return <AdminLogin onLogin={login} error={error} submitting={submitting} />;
+  }
+
+  return <Admin products={products} onUpdateStock={updateStock} onLogout={logout} />;
 }
 
 export default App;
