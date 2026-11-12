@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700">
+  <defs><linearGradient id="bg" x2="0" y2="1"><stop stop-color="#e2dfd0"/><stop offset="1" stop-color="#b9b59d"/></linearGradient><linearGradient id="bread" x2="0" y2="1"><stop stop-color="#d3a264"/><stop offset="1" stop-color="#9c6538"/></linearGradient></defs>
+  <rect width="900" height="700" fill="url(#bg)"/><path d="M0 502q280-35 900 5v193H0Z" fill="#c2b99f"/>
+  <ellipse cx="447" cy="520" rx="296" ry="48" fill="#564a36" opacity=".2"/>
+  <path d="M144 405c12-101 81-161 184-170 131-12 287 9 404 75 61 34 63 120 13 169-87 84-390 113-535 39-53-27-73-65-66-113Z" fill="url(#bread)"/>
+  <g fill="#786337"><ellipse cx="271" cy="365" rx="24" ry="11" transform="rotate(-26 271 365)"/><ellipse cx="400" cy="324" rx="24" ry="11" transform="rotate(18 400 324)"/><ellipse cx="532" cy="371" rx="24" ry="11" transform="rotate(-14 532 371)"/><ellipse cx="654" cy="412" rx="24" ry="11" transform="rotate(24 654 412)"/></g>
+  <g stroke="#64734b" stroke-width="8" stroke-linecap="round"><path d="m249 343-16-20m25 24 18-21m-14 30 25 1"/><path d="m383 304-12-23m22 26 23-16m-19 29 25 8"/><path d="m520 352-10-21m20 25 23-14m-18 28 25 6"/><path d="m643 394-11-19m22 23 22-17m-18 30 25 5"/></g>
+</svg>

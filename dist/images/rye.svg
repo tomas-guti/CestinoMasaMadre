@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700">
+  <defs><linearGradient id="bg" x2="0" y2="1"><stop stop-color="#d8d2c5"/><stop offset="1" stop-color="#a9a18f"/></linearGradient><linearGradient id="bread" x2=".2" y2="1"><stop stop-color="#78543a"/><stop offset="1" stop-color="#392b23"/></linearGradient></defs>
+  <rect width="900" height="700" fill="url(#bg)"/><path d="M0 493q320-35 900 7v200H0Z" fill="#b5aa97"/>
+  <ellipse cx="458" cy="531" rx="276" ry="55" fill="#4a4135" opacity=".2"/>
+  <path d="M193 470c-8-149 94-239 257-241 149-2 254 88 257 238 2 77-82 112-257 112-169 0-252-35-257-109Z" fill="url(#bread)"/>
+  <path d="M341 326q46-55 108-70m-73 112q57-60 132-84m-70 121q56-62 126-87" fill="none" stroke="#c39a64" stroke-width="14" stroke-linecap="round"/>
+  <g fill="#d9c39e"><ellipse cx="297" cy="435" rx="8" ry="4" transform="rotate(30 297 435)"/><ellipse cx="386" cy="275" rx="8" ry="4" transform="rotate(-20 386 275)"/><ellipse cx="562" cy="299" rx="8" ry="4" transform="rotate(25 562 299)"/><ellipse cx="626" cy="438" rx="8" ry="4" transform="rotate(-30 626 438)"/><ellipse cx="482" cy="524" rx="8" ry="4"/></g>
+</svg>
