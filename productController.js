@@ -104,7 +104,6 @@ export async function getProducts(request, response, next) {
         imagen,
         tag
       FROM Producto
-      WHERE stock > 0
       ORDER BY id_producto`,
     );
 

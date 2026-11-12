@@ -126,7 +126,6 @@ function ProductCard({ product, onAdd }) {
       <div className="product-image-wrap">
         <img className="product-image" src={product.imagen} alt={product.nombre} />
         {product.tag && <span className="product-tag">{product.tag}</span>}
-        {outOfStock && <span className="stock-label">Sin stock</span>}
       </div>
       <div className="product-info">
         <div className="product-heading">
@@ -137,12 +136,13 @@ function ProductCard({ product, onAdd }) {
           <span className="product-price">{money(product.precio)}</span>
         </div>
         <p className="product-detail">{product.detalle}</p>
+        <p className="product-stock">{product.stock} disponibles</p>
         <button
           className="add-button"
           disabled={outOfStock}
           onClick={() => onAdd(product)}
         >
-          {outOfStock ? "Agotado por hoy" : "Añadir al carrito"}
+          {outOfStock ? "Agotado" : "Agregar al carrito"}
           {!outOfStock && <Plus size={16} />}
         </button>
       </div>
