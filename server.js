@@ -7,6 +7,7 @@ import authenticateToken from "./authMiddleware.js";
 import {
   cleanupAbandonedOrders,
   createOrder,
+  confirmOrderPayment,
   deleteOrder,
   getAdminOrders,
   updateOrderStatus,
@@ -55,6 +56,7 @@ app.put("/api/productos/:id", authenticateToken, updateProduct);
 app.delete("/api/productos/:id", authenticateToken, deleteProduct);
 app.get("/api/pedidos/admin", authenticateToken, getAdminOrders);
 app.put("/api/pedidos/:id/estado", authenticateToken, updateOrderStatus);
+app.put("/api/pedidos/:id/confirmar-pago", confirmOrderPayment);
 app.delete("/api/pedidos/:id", authenticateToken, deleteOrder);
 app.post("/api/pedidos", createOrder);
 app.get("/api/admin/session", authenticateToken, (request, response) => {

@@ -1001,9 +1001,11 @@ function App() {
     setConfirmingPayment(true);
     setPaymentError("");
     try {
-      const response = await api.put(`/api/pedidos/${pendingOrder.id}/estado`, {
-        estado: "Confirmado",
-      });
+      const response = await api.put(
+        `/api/pedidos/${pendingOrder.id}/confirmar-pago`,
+        {},
+        { skipAuth: true },
+      );
       if (response.status !== 200) {
         throw new Error("El servidor no pudo confirmar el pago.");
       }

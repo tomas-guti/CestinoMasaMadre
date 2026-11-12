@@ -8,6 +8,11 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  if (config.skipAuth) {
+    delete config.skipAuth;
+    return config;
+  }
+
   const token = localStorage.getItem("cestino_admin_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

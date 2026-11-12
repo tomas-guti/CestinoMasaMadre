@@ -176,6 +176,33 @@ export async function updateOrderStatus(request, response, next) {
   }
 }
 
+export async function confirmOrderPayment(request, response, next) {
+  try {
+    const id = readOrderId(request.params.id);
+    const [result] = await pool.execute(
+      `UPDATE Pedido
+      SET estado = 'Confirmado'
+      WHERE id_pedido = ? AND estado = 'Pendiente'`,
+      [id],
+    );
+
+    if (result.affectedRows === 0) {
+      const [orders] = await pool.execute(
+        "SELECT estado FROM Pedido WHERE id_pedido = ?",
+        [id],
+      );
+      if (orders.length === 0) {
+        throw new RequestError(404, "El pedido indicado no existe.");
+      }
+      throw new RequestError(409, "Solo se pueden confirmar pedidos pendientes.");
+    }
+
+    return response.json({ id_pedido: id, estado: "Confirmado" });
+  } catch (error) {
+    return handleRequestError(error, response, next);
+  }
+}
+
 export async function deleteOrder(request, response, next) {
   let connection;
   let transactionStarted = false;
