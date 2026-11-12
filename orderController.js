@@ -11,6 +11,25 @@ function isPositiveInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function readOrderId(value) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new RequestError(400, "El id del pedido debe ser un entero positivo.");
+  }
+
+  const id = Number(value);
+  if (!isPositiveInteger(id) || id > 2147483647) {
+    throw new RequestError(400, "El id del pedido debe ser un entero positivo.");
+  }
+  return id;
+}
+
+function handleRequestError(error, response, next) {
+  if (error instanceof RequestError) {
+    return response.status(error.status).json({ message: error.message });
+  }
+  return next(error);
+}
+
 function readPrice(value) {
   const isIntegerPrice =
     (typeof value === "number" && Number.isSafeInteger(value)) ||
@@ -20,6 +39,89 @@ function readPrice(value) {
     throw new Error("El precio de un producto no es un entero CLP válido.");
   }
   return price;
+}
+
+export async function getAdminOrders(request, response, next) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT
+        p.id_pedido,
+        c.nombre AS nombre_cliente,
+        p.fecha,
+        p.total,
+        p.estado,
+        dp.id_producto,
+        pr.nombre AS nombre_producto,
+        dp.cantidad,
+        dp.precio_unitario,
+        dp.subtotal
+      FROM Pedido AS p
+      INNER JOIN Cliente AS c ON c.id_cliente = p.id_cliente
+      LEFT JOIN Detalle_pedido AS dp ON dp.id_pedido = p.id_pedido
+      LEFT JOIN Producto AS pr ON pr.id_producto = dp.id_producto
+      ORDER BY p.fecha DESC, p.id_pedido DESC, dp.id_producto`,
+    );
+
+    const ordersById = new Map();
+    for (const row of rows) {
+      let order = ordersById.get(row.id_pedido);
+      if (!order) {
+        order = {
+          id_pedido: row.id_pedido,
+          nombre_cliente: row.nombre_cliente,
+          fecha: row.fecha,
+          total: row.total,
+          estado: row.estado,
+          productos: [],
+        };
+        ordersById.set(row.id_pedido, order);
+      }
+
+      if (row.id_producto !== null) {
+        order.productos.push({
+          id_producto: row.id_producto,
+          nombre: row.nombre_producto,
+          cantidad: row.cantidad,
+          precio_unitario: row.precio_unitario,
+          subtotal: row.subtotal,
+        });
+      }
+    }
+
+    return response.json([...ordersById.values()]);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function updateOrderStatus(request, response, next) {
+  try {
+    const id = readOrderId(request.params.id);
+    const { estado } = request.body ?? {};
+    if (typeof estado !== "string" || estado.trim().length === 0 || estado.trim().length > 50) {
+      throw new RequestError(400, "estado debe ser un texto no vacío de hasta 50 caracteres.");
+    }
+
+    const normalizedStatus = estado.trim();
+    const [result] = await pool.execute(
+      "UPDATE Pedido SET estado = ? WHERE id_pedido = ?",
+      [normalizedStatus, id],
+    );
+
+    if (result.affectedRows === 0) {
+      const [orders] = await pool.execute(
+        "SELECT id_pedido FROM Pedido WHERE id_pedido = ?",
+        [id],
+      );
+      if (orders.length === 0) {
+        throw new RequestError(404, "El pedido indicado no existe.");
+      }
+    }
+
+    return response.json({ id_pedido: id, estado: normalizedStatus });
+  } catch (error) {
+    return handleRequestError(error, response, next);
+  }
 }
 
 export async function createOrder(request, response, next) {
@@ -104,7 +206,8 @@ export async function createOrder(request, response, next) {
     }
 
     const [orderResult] = await connection.execute(
-      "INSERT INTO Pedido (id_cliente, fecha, total) VALUES (?, CURRENT_TIMESTAMP, ?)",
+      `INSERT INTO Pedido (id_cliente, fecha, total, estado)
+      VALUES (?, CURRENT_TIMESTAMP, ?, 'Confirmado')`,
       [customerId, total],
     );
     const orderId = orderResult.insertId;

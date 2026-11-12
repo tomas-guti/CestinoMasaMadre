@@ -26,6 +26,7 @@ CREATE TABLE Pedido (
     id_cliente INT NOT NULL,
     fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
     total INT NOT NULL,
+    estado VARCHAR(50) NOT NULL DEFAULT 'Confirmado',
     FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente)
 ) ENGINE=InnoDB;
 
