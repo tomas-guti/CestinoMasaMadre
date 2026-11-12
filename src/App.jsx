@@ -14,6 +14,61 @@ import {
 } from "lucide-react";
 import api from "./api.js";
 
+const metropolitanCommunes = [
+  "Alhué",
+  "Buin",
+  "Calera de Tango",
+  "Cerrillos",
+  "Cerro Navia",
+  "Colina",
+  "Conchalí",
+  "Curacaví",
+  "El Bosque",
+  "El Monte",
+  "Estación Central",
+  "Huechuraba",
+  "Independencia",
+  "Isla de Maipo",
+  "La Cisterna",
+  "La Florida",
+  "La Granja",
+  "La Pintana",
+  "La Reina",
+  "Lampa",
+  "Las Condes",
+  "Lo Barnechea",
+  "Lo Espejo",
+  "Lo Prado",
+  "Macul",
+  "Maipú",
+  "María Pinto",
+  "Melipilla",
+  "Ñuñoa",
+  "Padre Hurtado",
+  "Paine",
+  "Pedro Aguirre Cerda",
+  "Peñaflor",
+  "Peñalolén",
+  "Pirque",
+  "Providencia",
+  "Pudahuel",
+  "Puente Alto",
+  "Quilicura",
+  "Quinta Normal",
+  "Recoleta",
+  "Renca",
+  "San Bernardo",
+  "San Joaquín",
+  "San José de Maipo",
+  "San Miguel",
+  "San Pedro",
+  "San Ramón",
+  "Santiago",
+  "Talagante",
+  "Tiltil",
+  "Vitacura",
+];
+
 const money = (value) =>
   new Intl.NumberFormat("es-CL", {
     style: "currency",
@@ -230,7 +285,14 @@ function CartDrawer({ open, cart, products, onClose, onChangeQuantity, onRemove,
   );
 }
 
-function Checkout({ cart, onBack, onPayment, paying }) {
+function Checkout({
+  cart,
+  onBack,
+  onPayment,
+  paying,
+  pendingOrderId,
+  onResumePayment,
+}) {
   const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
   const [form, setForm] = useState({
     nombre: "",
@@ -252,7 +314,9 @@ function Checkout({ cart, onBack, onPayment, paying }) {
     if (!form.nombre.trim()) nextErrors.nombre = "Ingresa tu nombre.";
     if (!form.calle.trim()) nextErrors.calle = "Ingresa una calle.";
     if (!form.numero.trim()) nextErrors.numero = "Ingresa un número.";
-    if (!form.comuna.trim()) nextErrors.comuna = "Ingresa una comuna.";
+    if (!metropolitanCommunes.includes(form.comuna)) {
+      nextErrors.comuna = "Selecciona una comuna de la Región Metropolitana.";
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) nextErrors.email = "Ingresa un correo válido.";
     if (!form.telefono.trim()) nextErrors.telefono = "Ingresa un teléfono de contacto.";
     setErrors(nextErrors);
@@ -273,32 +337,37 @@ function Checkout({ cart, onBack, onPayment, paying }) {
             <div className="form-section-title"><span>01</span><h2>Datos de entrega</h2></div>
             <label className="field">
               <span>Nombre completo</span>
-              <input name="nombre" value={form.nombre} onChange={update} placeholder="Tu nombre y apellido" autoComplete="name" />
+              <input name="nombre" value={form.nombre} onChange={update} placeholder="Tu nombre y apellido" autoComplete="name" maxLength={100} required />
               {errors.nombre && <small>{errors.nombre}</small>}
             </label>
             <label className="field">
               <span>Correo electrónico</span>
-              <input name="email" type="email" value={form.email} onChange={update} placeholder="tu@correo.com" autoComplete="email" />
+              <input name="email" type="email" value={form.email} onChange={update} placeholder="tu@correo.com" autoComplete="email" maxLength={100} required />
               {errors.email && <small>{errors.email}</small>}
             </label>
             <label className="field">
               <span>Teléfono</span>
-              <input name="telefono" type="tel" value={form.telefono} onChange={update} placeholder="+56 9 1234 5678" autoComplete="tel" maxLength={30} />
+              <input name="telefono" type="tel" value={form.telefono} onChange={update} placeholder="+56 9 1234 5678" autoComplete="tel" maxLength={30} required />
               {errors.telefono && <small>{errors.telefono}</small>}
             </label>
             <label className="field">
               <span>Calle</span>
-              <input name="calle" value={form.calle} onChange={update} placeholder="Nombre de la calle" autoComplete="address-line1" maxLength={150} />
+              <input name="calle" value={form.calle} onChange={update} placeholder="Nombre de la calle" autoComplete="address-line1" maxLength={150} required />
               {errors.calle && <small>{errors.calle}</small>}
             </label>
             <label className="field">
               <span>Número</span>
-              <input name="numero" value={form.numero} onChange={update} placeholder="Número y departamento" maxLength={30} />
+              <input name="numero" value={form.numero} onChange={update} placeholder="Número y departamento" maxLength={30} required />
               {errors.numero && <small>{errors.numero}</small>}
             </label>
             <label className="field">
               <span>Comuna</span>
-              <input name="comuna" value={form.comuna} onChange={update} placeholder="Comuna" autoComplete="address-level2" maxLength={100} />
+              <select name="comuna" value={form.comuna} onChange={update} autoComplete="address-level2" required>
+                <option value="">Selecciona una comuna</option>
+                {metropolitanCommunes.map((comuna) => (
+                  <option key={comuna} value={comuna}>{comuna}</option>
+                ))}
+              </select>
               {errors.comuna && <small>{errors.comuna}</small>}
             </label>
           </section>
@@ -306,10 +375,19 @@ function Checkout({ cart, onBack, onPayment, paying }) {
             <div className="form-section-title"><span>02</span><h2>Pago</h2></div>
             <div className="payment-note"><Check size={17} /><span>Pago seguro de demostración</span><span className="payment-method">Simulación</span></div>
           </section>
-          <button type="submit" className="primary-button full-button" disabled={paying}>
-            {paying ? "Procesando pedido..." : "Confirmar pedido"}
-            {!paying && <ArrowRight size={17} />}
-          </button>
+          {pendingOrderId ? (
+            <div className="pending-payment-actions">
+              <p>Pedido #{pendingOrderId} pendiente de pago.</p>
+              <button type="button" className="primary-button full-button" onClick={onResumePayment}>
+                Reanudar simulación de pago <ArrowRight size={17} />
+              </button>
+            </div>
+          ) : (
+            <button type="submit" className="primary-button full-button" disabled={paying}>
+              {paying ? "Creando pedido..." : "Continuar"}
+              {!paying && <ArrowRight size={17} />}
+            </button>
+          )}
           <p className="secure-caption">No se realizará ningún cobro real.</p>
         </form>
         <aside className="order-summary">
@@ -718,16 +796,62 @@ function Admin({ onLogout }) {
   );
 }
 
-function PaymentOverlay() {
+function PaymentSimulationModal({
+  orderId,
+  total,
+  confirming,
+  error,
+  onConfirm,
+  onClose,
+}) {
   return (
-    <div className="payment-overlay" role="status" aria-live="polite">
-      <div className="payment-card">
-        <span className="payment-spinner" aria-hidden="true" />
+    <div
+      className="payment-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !confirming) onClose();
+      }}
+    >
+      <section
+        className="payment-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-simulation-title"
+        aria-describedby="payment-simulation-description"
+      >
+        <button
+          className="icon-button payment-close"
+          type="button"
+          aria-label="Cerrar simulación de pago"
+          disabled={confirming}
+          onClick={onClose}
+        >
+          <X size={17} />
+        </button>
         <span className="eyebrow">Cestino · Masa madre</span>
-        <h2>Procesando tu pago</h2>
-        <p>Estamos preparando la confirmación de tu pedido.</p>
-        <span className="redirect-caption">Esto tomará solo un momento.</span>
-      </div>
+        <h2 id="payment-simulation-title">Simulación de Pago</h2>
+        <p id="payment-simulation-description">
+          Pedido #{orderId} · Total {money(total)}. Confirma para completar el pedido.
+        </p>
+        {error && <p className="payment-error" role="alert">{error}</p>}
+        <div className="payment-modal-actions">
+          <button
+            className="outline-button"
+            type="button"
+            disabled={confirming}
+            onClick={onClose}
+          >
+            Cerrar
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={confirming}
+            onClick={onConfirm}
+          >
+            {confirming ? "Confirmando..." : "Confirmar Pago"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -741,6 +865,10 @@ function App() {
   const [view, setView] = useState("catalog");
   const [cartOpen, setCartOpen] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
   const [notice, setNotice] = useState("");
   const [noticeIsError, setNoticeIsError] = useState(false);
 
@@ -822,10 +950,10 @@ function App() {
       !cliente.telefono ||
       !cliente.calle ||
       !cliente.numero ||
-      !cliente.comuna ||
+      !metropolitanCommunes.includes(cliente.comuna) ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cliente.email)
     ) {
-      setNotice("Completa nombre, email, teléfono, calle, número y comuna válidos antes de confirmar el pedido.");
+      setNotice("Completa todos los datos y selecciona una comuna de la Región Metropolitana.");
       setNoticeIsError(true);
       return;
     }
@@ -845,15 +973,16 @@ function App() {
     try {
       const response = await api.post("/api/pedidos", payload);
       if (response.status !== 200 && response.status !== 201) {
-        throw new Error("El servidor no pudo confirmar el pedido.");
+        throw new Error("El servidor no pudo crear el pedido.");
+      }
+      if (!Number.isSafeInteger(response.data.id_pedido) || response.data.id_pedido < 1) {
+        throw new Error("El servidor no devolvió un identificador de pedido válido.");
       }
 
-      setCartOpen(false);
-      setCart([]);
-      setView("catalog");
-      setNotice("Pedido confirmado correctamente.");
-      setNoticeIsError(false);
-      window.setTimeout(() => setNotice(""), 4000);
+      const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
+      setPendingOrder({ id: response.data.id_pedido, total });
+      setPaymentError("");
+      setPaymentModalOpen(true);
     } catch (error) {
       setNotice(
         error.response?.data?.message ||
@@ -864,6 +993,49 @@ function App() {
     } finally {
       setPaying(false);
     }
+  };
+
+  const confirmPayment = async () => {
+    if (!pendingOrder) return;
+
+    setConfirmingPayment(true);
+    setPaymentError("");
+    try {
+      const response = await api.put(`/api/pedidos/${pendingOrder.id}/estado`, {
+        estado: "Confirmado",
+      });
+      if (response.status !== 200) {
+        throw new Error("El servidor no pudo confirmar el pago.");
+      }
+
+      setCart([]);
+      setPendingOrder(null);
+      setPaymentModalOpen(false);
+      setView("catalog");
+      setCatalogReload((current) => current + 1);
+      setNotice("Pago confirmado correctamente.");
+      setNoticeIsError(false);
+      window.setTimeout(() => setNotice(""), 4000);
+    } catch (error) {
+      setPaymentError(
+        error.response?.data?.message ||
+          error.message ||
+          "No se pudo confirmar el pago. Inténtalo nuevamente.",
+      );
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
+
+  const closePaymentModal = () => {
+    if (confirmingPayment) return;
+    setPaymentModalOpen(false);
+    setPaymentError("");
+  };
+
+  const resumePayment = () => {
+    setPaymentError("");
+    setPaymentModalOpen(true);
   };
 
   const navigate = () => {
@@ -885,7 +1057,16 @@ function App() {
           onRetry={() => setCatalogReload((current) => current + 1)}
         />
       )}
-      {view === "checkout" && <Checkout cart={cart} onBack={() => { setView("catalog"); setCartOpen(true); }} onPayment={startPayment} paying={paying} />}
+      {view === "checkout" && (
+        <Checkout
+          cart={cart}
+          onBack={() => { setView("catalog"); setCartOpen(true); }}
+          onPayment={startPayment}
+          paying={paying}
+          pendingOrderId={pendingOrder?.id}
+          onResumePayment={resumePayment}
+        />
+      )}
       <footer className="site-footer">
         <Brand onClick={() => navigate("catalog")} />
         <span>Pan hecho con tiempo, desde 2018.</span>
@@ -906,7 +1087,16 @@ function App() {
           {notice}
         </div>
       )}
-      {paying && <PaymentOverlay />}
+      {paymentModalOpen && pendingOrder && (
+        <PaymentSimulationModal
+          orderId={pendingOrder.id}
+          total={pendingOrder.total}
+          confirming={confirmingPayment}
+          error={paymentError}
+          onConfirm={confirmPayment}
+          onClose={closePaymentModal}
+        />
+      )}
     </div>
   );
 }
