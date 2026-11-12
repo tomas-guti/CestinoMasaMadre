@@ -88,6 +88,7 @@ export async function getAdminOrders(request, response, next) {
     const [rows] = await pool.execute(
       `SELECT
         p.id_pedido,
+        p.numero_boleta,
         c.nombre AS nombre_cliente,
         p.fecha,
         p.total,
@@ -115,6 +116,7 @@ export async function getAdminOrders(request, response, next) {
       if (!order) {
         order = {
           id_pedido: row.id_pedido,
+          numero_boleta: row.numero_boleta,
           nombre_cliente: row.nombre_cliente,
           email: row.email,
           telefono: row.telefono,
@@ -179,11 +181,12 @@ export async function updateOrderStatus(request, response, next) {
 export async function confirmOrderPayment(request, response, next) {
   try {
     const id = readOrderId(request.params.id);
+    const numeroBoleta = `BOL-${id}-${Date.now()}`;
     const [result] = await pool.execute(
       `UPDATE Pedido
-      SET estado = 'Confirmado'
+      SET estado = 'Confirmado', numero_boleta = ?
       WHERE id_pedido = ? AND estado = 'Pendiente'`,
-      [id],
+      [numeroBoleta, id],
     );
 
     if (result.affectedRows === 0) {
@@ -197,7 +200,62 @@ export async function confirmOrderPayment(request, response, next) {
       throw new RequestError(409, "Solo se pueden confirmar pedidos pendientes.");
     }
 
-    return response.json({ id_pedido: id, estado: "Confirmado" });
+    const [rows] = await pool.execute(
+      `SELECT
+        p.id_pedido,
+        p.numero_boleta,
+        p.fecha,
+        p.total,
+        p.estado,
+        c.nombre AS nombre_cliente,
+        c.email,
+        c.telefono,
+        c.calle,
+        c.numero,
+        c.comuna,
+        pr.nombre AS nombre_producto,
+        dp.cantidad,
+        dp.precio_unitario,
+        dp.subtotal
+      FROM Pedido AS p
+      INNER JOIN Cliente AS c ON c.id_cliente = p.id_cliente
+      LEFT JOIN Detalle_pedido AS dp ON dp.id_pedido = p.id_pedido
+      LEFT JOIN Producto AS pr ON pr.id_producto = dp.id_producto
+      WHERE p.id_pedido = ?
+      ORDER BY dp.id_producto`,
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new RequestError(404, "El pedido indicado no existe.");
+    }
+
+    const firstRow = rows[0];
+    const pedido = {
+      id_pedido: firstRow.id_pedido,
+      numero_boleta: firstRow.numero_boleta,
+      fecha: firstRow.fecha,
+      total: firstRow.total,
+      estado: firstRow.estado,
+      cliente: {
+        nombre: firstRow.nombre_cliente,
+        email: firstRow.email,
+        telefono: firstRow.telefono,
+        calle: firstRow.calle,
+        numero: firstRow.numero,
+        comuna: firstRow.comuna,
+      },
+      productos: rows
+        .filter((row) => row.nombre_producto !== null)
+        .map((row) => ({
+          nombre: row.nombre_producto,
+          cantidad: row.cantidad,
+          precio_unitario: row.precio_unitario,
+          subtotal: row.subtotal,
+        })),
+    };
+
+    return response.status(200).json(pedido);
   } catch (error) {
     return handleRequestError(error, response, next);
   }

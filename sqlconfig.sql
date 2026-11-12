@@ -31,6 +31,7 @@ CREATE TABLE Pedido (
     fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
     total INT NOT NULL,
     estado VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
+    numero_boleta VARCHAR(100) NULL UNIQUE,
     INDEX idx_pedido_estado_fecha (estado, fecha),
     FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente)
 ) ENGINE=InnoDB;
