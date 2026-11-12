@@ -14,71 +14,6 @@ import {
 } from "lucide-react";
 import api from "./api.js";
 
-const initialProducts = [
-  {
-    id: 1,
-    nombre: "Sourdough rústico",
-    categoria: "Panes",
-    detalle: "Harina de campo · 24 h de fermentación",
-    precio: 5900,
-    stock: 12,
-    imagen: "/images/sourdough.svg",
-    tag: "El favorito",
-  },
-  {
-    id: 2,
-    nombre: "Baguette de masa madre",
-    categoria: "Panes",
-    detalle: "Corteza fina · miga aireada",
-    precio: 3200,
-    stock: 8,
-    imagen: "/images/baguette.svg",
-  },
-  {
-    id: 3,
-    nombre: "Pan de centeno",
-    categoria: "Panes",
-    detalle: "Centeno integral · semillas tostadas",
-    precio: 6400,
-    stock: 5,
-    imagen: "/images/rye.svg",
-  },
-  {
-    id: 4,
-    nombre: "Croissant de mantequilla",
-    categoria: "Pasteles",
-    detalle: "Mantequilla francesa · laminado a mano",
-    precio: 2500,
-    stock: 14,
-    imagen: "/images/croissant.svg",
-    tag: "Recién horneado",
-  },
-  {
-    id: 5,
-    nombre: "Roll de canela",
-    categoria: "Pasteles",
-    detalle: "Canela de Ceylán · glaseado cítrico",
-    precio: 2900,
-    stock: 0,
-    imagen: "/images/cinnamon-roll.svg",
-  },
-  {
-    id: 6,
-    nombre: "Focaccia de temporada",
-    categoria: "Panes",
-    detalle: "Aceite de oliva · romero fresco",
-    precio: 5200,
-    stock: 6,
-    imagen: "/images/focaccia.svg",
-  },
-];
-
-const recentOrders = [
-  { id: "#CS-1048", cliente: "Camila Rojas", total: 11800, estado: "Entregado" },
-  { id: "#CS-1047", cliente: "Matías Silva", total: 8400, estado: "En preparación" },
-  { id: "#CS-1046", cliente: "Josefina Paz", total: 5900, estado: "Confirmado" },
-];
-
 const money = (value) =>
   new Intl.NumberFormat("es-CL", {
     style: "currency",
@@ -295,9 +230,9 @@ function CartDrawer({ open, cart, products, onClose, onChangeQuantity, onRemove,
   );
 }
 
-function Checkout({ cart, onBack, onPayment }) {
+function Checkout({ cart, onBack, onPayment, paying }) {
   const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
-  const [form, setForm] = useState({ nombre: "", direccion: "", correo: "" });
+  const [form, setForm] = useState({ nombre: "", email: "", direccion: "", telefono: "" });
   const [errors, setErrors] = useState({});
 
   const update = (event) => {
@@ -309,7 +244,8 @@ function Checkout({ cart, onBack, onPayment }) {
     const nextErrors = {};
     if (!form.nombre.trim()) nextErrors.nombre = "Ingresa tu nombre.";
     if (!form.direccion.trim()) nextErrors.direccion = "Ingresa una dirección de entrega.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.correo)) nextErrors.correo = "Ingresa un correo válido.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) nextErrors.email = "Ingresa un correo válido.";
+    if (!form.telefono.trim()) nextErrors.telefono = "Ingresa un teléfono de contacto.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length === 0) onPayment(form);
   };
@@ -338,15 +274,23 @@ function Checkout({ cart, onBack, onPayment }) {
             </label>
             <label className="field">
               <span>Correo electrónico</span>
-              <input name="correo" type="email" value={form.correo} onChange={update} placeholder="tu@correo.com" autoComplete="email" />
-              {errors.correo && <small>{errors.correo}</small>}
+              <input name="email" type="email" value={form.email} onChange={update} placeholder="tu@correo.com" autoComplete="email" />
+              {errors.email && <small>{errors.email}</small>}
+            </label>
+            <label className="field">
+              <span>Teléfono</span>
+              <input name="telefono" type="tel" value={form.telefono} onChange={update} placeholder="+56 9 1234 5678" autoComplete="tel" maxLength={30} />
+              {errors.telefono && <small>{errors.telefono}</small>}
             </label>
           </section>
           <section className="form-section payment-section">
             <div className="form-section-title"><span>02</span><h2>Pago</h2></div>
             <div className="payment-note"><Check size={17} /><span>Pago seguro de demostración</span><span className="payment-method">Simulación</span></div>
           </section>
-          <button type="submit" className="primary-button full-button">Simular pago <ArrowRight size={17} /></button>
+          <button type="submit" className="primary-button full-button" disabled={paying}>
+            {paying ? "Procesando pedido..." : "Confirmar pedido"}
+            {!paying && <ArrowRight size={17} />}
+          </button>
           <p className="secure-caption">No se realizará ningún cobro real.</p>
         </form>
         <aside className="order-summary">
@@ -369,24 +313,215 @@ function Checkout({ cart, onBack, onPayment }) {
   );
 }
 
-function Admin({ products, onUpdateStock, onLogout }) {
-  const [section, setSection] = useState("Inventario");
-  const [draftStocks, setDraftStocks] = useState(() =>
-    Object.fromEntries(products.map((product) => [product.id, String(product.stock)])),
-  );
-  const [savedId, setSavedId] = useState(null);
-  const [stockErrors, setStockErrors] = useState({});
+const emptyProduct = {
+  nombre: "",
+  categoria: "",
+  detalle: "",
+  precio: "",
+  stock: "0",
+  imagen: "",
+  tag: "",
+};
+const orderStatuses = ["Pendiente", "Preparando", "Listo", "Entregado"];
 
-  const saveStock = (product) => {
-    const parsedStock = Number(draftStocks[product.id]);
-    if (!Number.isInteger(parsedStock) || parsedStock < 0) {
-      setStockErrors({ ...stockErrors, [product.id]: "Ingresa un stock entero igual o mayor que 0." });
+function formatOrderDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Fecha no disponible"
+    : new Intl.DateTimeFormat("es-CL", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date);
+}
+
+function Admin({ onLogout }) {
+  const [section, setSection] = useState("Productos");
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [productsError, setProductsError] = useState("");
+  const [ordersError, setOrdersError] = useState("");
+  const [productReload, setProductReload] = useState(0);
+  const [orderReload, setOrderReload] = useState(0);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productFormOpen, setProductFormOpen] = useState(false);
+  const [productForm, setProductForm] = useState(emptyProduct);
+  const [formError, setFormError] = useState("");
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [updatingOrders, setUpdatingOrders] = useState({});
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    const loadProducts = async () => {
+      setProductsLoading(true);
+      setProductsError("");
+      try {
+        const response = await api.get("/api/productos", { signal: controller.signal });
+        if (active) setProducts(response.data);
+      } catch (error) {
+        if (active) {
+          setProductsError(
+            error.response?.data?.message || "No se pudieron cargar los productos.",
+          );
+        }
+      } finally {
+        if (active) setProductsLoading(false);
+      }
+    };
+
+    loadProducts();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [productReload]);
+
+  useEffect(() => {
+    if (section !== "Pedidos") return undefined;
+
+    const controller = new AbortController();
+    let active = true;
+    const loadOrders = async () => {
+      setOrdersLoading(true);
+      setOrdersError("");
+      try {
+        const response = await api.get("/api/pedidos/admin", { signal: controller.signal });
+        if (active) setOrders(response.data);
+      } catch (error) {
+        if (active) {
+          setOrdersError(error.response?.data?.message || "No se pudieron cargar los pedidos.");
+        }
+      } finally {
+        if (active) setOrdersLoading(false);
+      }
+    };
+
+    loadOrders();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [section, orderReload]);
+
+  const openNewProductForm = () => {
+    setEditingProduct(null);
+    setProductForm(emptyProduct);
+    setFormError("");
+    setProductFormOpen(true);
+  };
+
+  const openEditProductForm = (product) => {
+    setEditingProduct(product);
+    setProductFormOpen(true);
+    setProductForm({
+      nombre: product.nombre ?? "",
+      categoria: product.categoria ?? "",
+      detalle: product.detalle ?? "",
+      precio: String(product.precio),
+      stock: String(product.stock),
+      imagen: product.imagen ?? "",
+      tag: product.tag ?? "",
+    });
+    setFormError("");
+  };
+
+  const saveProduct = async (event) => {
+    event.preventDefault();
+    const precio = Number(productForm.precio);
+    const stock = Number(productForm.stock);
+    if (
+      !Number.isSafeInteger(precio) ||
+      precio < 0 ||
+      precio > 2147483647 ||
+      !Number.isSafeInteger(stock) ||
+      stock < 0 ||
+      stock > 2147483647
+    ) {
+      setFormError("Precio y stock deben ser enteros entre 0 y 2.147.483.647.");
       return;
     }
-    setStockErrors({ ...stockErrors, [product.id]: "" });
-    onUpdateStock(product.id, parsedStock);
-    setSavedId(product.id);
-    window.setTimeout(() => setSavedId((current) => (current === product.id ? null : current)), 1800);
+
+    if (!productForm.nombre.trim()) {
+      setFormError("El nombre del producto es obligatorio.");
+      return;
+    }
+
+    const payload = {
+      nombre: productForm.nombre.trim(),
+      categoria: productForm.categoria.trim() || null,
+      detalle: productForm.detalle.trim() || null,
+      precio,
+      stock,
+      imagen: productForm.imagen.trim() || null,
+      tag: productForm.tag.trim() || null,
+    };
+
+    setSavingProduct(true);
+    setFormError("");
+    try {
+      if (editingProduct) {
+        const response = await api.put(`/api/productos/${editingProduct.id}`, payload);
+        setProducts((current) =>
+          current.map((product) =>
+            product.id === editingProduct.id ? response.data : product,
+          ),
+        );
+      } else {
+        const response = await api.post("/api/productos", payload);
+        setProducts((current) => [response.data, ...current]);
+      }
+      setEditingProduct(null);
+      setProductFormOpen(false);
+    } catch (error) {
+      setFormError(
+        error.response?.data?.message || "No se pudo guardar el producto.",
+      );
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const deleteProduct = async (product) => {
+    if (!window.confirm(`¿Eliminar "${product.nombre}"?`)) return;
+    setProductsError("");
+    try {
+      await api.delete(`/api/productos/${product.id}`);
+      setProducts((current) => current.filter((item) => item.id !== product.id));
+    } catch (error) {
+      setProductsError(
+        error.response?.data?.message || "No se pudo eliminar el producto.",
+      );
+    }
+  };
+
+  const updateOrderStatus = async (order, estado) => {
+    const previousStatus = order.estado;
+    setOrdersError("");
+    setUpdatingOrders((current) => ({ ...current, [order.id_pedido]: true }));
+    setOrders((current) =>
+      current.map((item) =>
+        item.id_pedido === order.id_pedido ? { ...item, estado } : item,
+      ),
+    );
+    try {
+      await api.put(`/api/pedidos/${order.id_pedido}/estado`, { estado });
+    } catch (error) {
+      setOrders((current) =>
+        current.map((item) =>
+          item.id_pedido === order.id_pedido
+            ? { ...item, estado: previousStatus }
+            : item,
+        ),
+      );
+      setOrdersError(
+        error.response?.data?.message || "No se pudo actualizar el estado del pedido.",
+      );
+    } finally {
+      setUpdatingOrders((current) => ({ ...current, [order.id_pedido]: false }));
+    }
   };
 
   return (
@@ -395,85 +530,169 @@ function Admin({ products, onUpdateStock, onLogout }) {
         <div>
           <span className="eyebrow">Espacio de gestión</span>
           <h1>Panel de administración</h1>
-          <p>Gestiona el día a día de Cestino.</p>
+          <p>Gestiona productos y pedidos de Cestino.</p>
         </div>
         <div className="admin-actions">
           <div className="admin-user"><CircleUserRound size={18} /><span>Administrador</span></div>
           <button className="outline-button small-outline" onClick={onLogout}><LogOut size={14} /> Cerrar sesión</button>
         </div>
       </div>
-      <div className="admin-tabs">
-        {["Inventario", "Órdenes"].map((item) => (
-          <button key={item} className={section === item ? "admin-tab active" : "admin-tab"} onClick={() => setSection(item)}>
-            {item}<span>{item === "Inventario" ? products.length : recentOrders.length}</span>
+      <div className="admin-tabs" role="tablist" aria-label="Secciones de administración">
+        {["Productos", "Pedidos"].map((item) => (
+          <button
+            key={item}
+            id={`admin-tab-${item.toLowerCase()}`}
+            className={section === item ? "admin-tab active" : "admin-tab"}
+            role="tab"
+            aria-selected={section === item}
+            aria-controls={`admin-panel-${item.toLowerCase()}`}
+            onClick={() => setSection(item)}
+          >
+            {item}<span>{item === "Productos" ? products.length : orders.length}</span>
           </button>
         ))}
       </div>
-      {section === "Inventario" ? (
-        <section className="admin-panel">
+      {section === "Productos" ? (
+        <section
+          className="admin-panel"
+          id="admin-panel-productos"
+          role="tabpanel"
+          aria-labelledby="admin-tab-productos"
+        >
           <div className="panel-heading">
-            <div><h2>Inventario</h2><p>Actualiza la disponibilidad de cada producto.</p></div>
-            <span className="live-indicator"><span /> Sincronizado</span>
+            <div><h2>Productos</h2><p>Administra precios, inventario y catálogo.</p></div>
+            <div className="admin-panel-actions">
+              <button className="outline-button small-outline" onClick={() => setProductReload((current) => current + 1)}>
+                Actualizar
+              </button>
+              <button className="primary-button admin-new-button" onClick={openNewProductForm}>
+                <Plus size={15} /> Nuevo Producto
+              </button>
+            </div>
           </div>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock disponible</th><th></th></tr></thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.id}>
-                    <td><div className="table-product"><img src={product.imagen} alt="" /><strong>{product.nombre}</strong></div></td>
-                    <td><span className="category-pill">{product.categoria}</span></td>
-                    <td>{money(product.precio)}</td>
-                    <td>
-                      <input
-                        className="stock-input"
-                        type="number"
-                        min="0"
-                        step="1"
-                        aria-label={`Stock de ${product.nombre}`}
-                        aria-invalid={Boolean(stockErrors[product.id])}
-                        value={draftStocks[product.id] ?? product.stock}
-                        onChange={(event) => {
-                          setDraftStocks({ ...draftStocks, [product.id]: event.target.value });
-                          setStockErrors({ ...stockErrors, [product.id]: "" });
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <button className="save-button" onClick={() => saveStock(product)}>{savedId === product.id ? <><Check size={14} /> Guardado</> : "Guardar"}</button>
-                      {stockErrors[product.id] && <span className="stock-error">{stockErrors[product.id]}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {productsError && <p className="admin-error" role="alert">{productsError}</p>}
+          {productsLoading ? (
+            <p className="admin-empty" role="status">Cargando productos...</p>
+          ) : products.length === 0 && !productsError ? (
+            <p className="admin-empty">Aún no hay productos. Crea el primero.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Stock</th><th>Acciones</th></tr></thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.id}>
+                      <td><div className="table-product"><img src={product.imagen || "/images/sourdough.svg"} alt="" /><strong>{product.nombre}</strong></div></td>
+                      <td>{product.categoria || "—"}</td>
+                      <td>{money(product.precio)}</td>
+                      <td>{product.stock}</td>
+                      <td>
+                        <div className="product-actions">
+                          <button className="save-button" onClick={() => openEditProductForm(product)}>Editar</button>
+                          <button className="delete-button" onClick={() => deleteProduct(product)}>Eliminar</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       ) : (
-        <section className="admin-panel">
+        <section
+          className="admin-panel"
+          id="admin-panel-pedidos"
+          role="tabpanel"
+          aria-labelledby="admin-tab-pedidos"
+        >
           <div className="panel-heading">
-            <div><h2>Órdenes recientes</h2><p>Un vistazo a los pedidos de tu tienda.</p></div>
-            <button className="outline-button small-outline">Ver todas <ArrowRight size={14} /></button>
+            <div><h2>Pedidos</h2><p>Consulta ventas y actualiza su estado.</p></div>
+            <button className="outline-button small-outline" onClick={() => setOrderReload((current) => current + 1)}>
+              Actualizar
+            </button>
           </div>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Pedido</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
-              <tbody>
-                {recentOrders.map((order, index) => (
-                  <tr key={order.id}>
-                    <td><strong>{order.id}</strong></td>
-                    <td>{order.cliente}</td>
-                    <td>{["Hoy, 10:42", "Hoy, 09:18", "Ayer, 16:35"][index]}</td>
-                    <td>{money(order.total)}</td>
-                    <td><span className={`order-status status-${index}`}>{order.estado}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {ordersError && <p className="admin-error" role="alert">{ordersError}</p>}
+          {ordersLoading ? (
+            <p className="admin-empty" role="status">Cargando pedidos...</p>
+          ) : orders.length === 0 && !ordersError ? (
+            <p className="admin-empty">No hay pedidos registrados.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Pedido</th><th>Nombre</th><th>Email</th><th>Dirección</th><th>Teléfono</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
+                <tbody>
+                  {orders.map((order) => {
+                    const statuses = orderStatuses.includes(order.estado)
+                      ? orderStatuses
+                      : [order.estado, ...orderStatuses];
+                    return (
+                      <tr key={order.id_pedido}>
+                        <td><strong>#{order.id_pedido}</strong></td>
+                        <td>{order.nombre_cliente}</td>
+                        <td>{order.email}</td>
+                        <td>{order.direccion}</td>
+                        <td>{order.telefono}</td>
+                        <td>{formatOrderDate(order.fecha)}</td>
+                        <td>{money(order.total)}</td>
+                        <td>
+                          <select
+                            className="status-select"
+                            aria-label={`Estado del pedido ${order.id_pedido}`}
+                            value={order.estado}
+                            disabled={Boolean(updatingOrders[order.id_pedido])}
+                            onChange={(event) => updateOrderStatus(order, event.target.value)}
+                          >
+                            {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
-      <div className="admin-footnote"><span>Última actualización</span><span>Hoy, 10:42</span></div>
+      <div className="admin-footnote"><span>Sesión protegida</span><span>Administración</span></div>
+      {productFormOpen && (
+        <div className="admin-modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !savingProduct) setProductFormOpen(false);
+        }}>
+          <section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="product-form-title">
+            <div className="admin-modal-heading">
+              <div>
+                <span className="eyebrow">{editingProduct ? "Editar catálogo" : "Nuevo registro"}</span>
+                <h2 id="product-form-title">{editingProduct ? "Editar producto" : "Nuevo producto"}</h2>
+              </div>
+              <button className="icon-button" aria-label="Cerrar formulario" disabled={savingProduct} onClick={() => setProductFormOpen(false)}>
+                <X size={17} />
+              </button>
+            </div>
+            <form className="product-form" onSubmit={saveProduct}>
+              <label className="field"><span>Nombre</span><input required maxLength={100} value={productForm.nombre} onChange={(event) => setProductForm({ ...productForm, nombre: event.target.value })} /></label>
+              <div className="product-form-row">
+                <label className="field"><span>Categoría</span><input maxLength={50} value={productForm.categoria} onChange={(event) => setProductForm({ ...productForm, categoria: event.target.value })} /></label>
+                <label className="field"><span>Precio (CLP)</span><input type="number" min="0" max="2147483647" step="1" required value={productForm.precio} onChange={(event) => setProductForm({ ...productForm, precio: event.target.value })} /></label>
+              </div>
+              <div className="product-form-row">
+                <label className="field"><span>Stock</span><input type="number" min="0" max="2147483647" step="1" required value={productForm.stock} onChange={(event) => setProductForm({ ...productForm, stock: event.target.value })} /></label>
+                <label className="field"><span>Etiqueta</span><input maxLength={50} value={productForm.tag} onChange={(event) => setProductForm({ ...productForm, tag: event.target.value })} /></label>
+              </div>
+              <label className="field"><span>Descripción</span><textarea rows="3" value={productForm.detalle} onChange={(event) => setProductForm({ ...productForm, detalle: event.target.value })} /></label>
+              <label className="field"><span>Ruta de imagen</span><input maxLength={255} value={productForm.imagen} onChange={(event) => setProductForm({ ...productForm, imagen: event.target.value })} placeholder="/images/producto.svg" /></label>
+              {formError && <p className="admin-error" role="alert">{formError}</p>}
+              <div className="product-form-actions">
+                <button type="button" className="outline-button" disabled={savingProduct} onClick={() => setProductFormOpen(false)}>Cancelar</button>
+                <button type="submit" className="primary-button" disabled={savingProduct}>
+                  {savingProduct ? "Guardando..." : editingProduct ? "Guardar cambios" : "Crear producto"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -502,6 +721,7 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [paying, setPaying] = useState(false);
   const [notice, setNotice] = useState("");
+  const [noticeIsError, setNoticeIsError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -549,6 +769,7 @@ function App() {
       return [...current, { ...product, cantidad: 1 }];
     });
     setNotice(`${product.nombre} añadido al carrito`);
+    setNoticeIsError(false);
     window.setTimeout(() => setNotice(""), 2300);
   };
 
@@ -565,28 +786,65 @@ function App() {
     );
   };
 
-  const updateStock = (id, stock) => {
-    setProducts((current) => current.map((product) => product.id === id ? { ...product, stock } : product));
-    setCart((current) => current
-      .map((item) => item.id === id ? { ...item, cantidad: Math.min(item.cantidad, stock) } : item)
-      .filter((item) => item.cantidad > 0));
-  };
+  const startPayment = async (customerDetails) => {
+    const cliente = {
+      nombre: customerDetails.nombre.trim(),
+      email: customerDetails.email.trim(),
+      direccion: customerDetails.direccion.trim(),
+      telefono: customerDetails.telefono.trim(),
+    };
+    if (
+      !cliente.nombre ||
+      !cliente.email ||
+      !cliente.direccion ||
+      !cliente.telefono ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cliente.email)
+    ) {
+      setNotice("Completa nombre, email, dirección y teléfono válidos antes de confirmar el pedido.");
+      setNoticeIsError(true);
+      return;
+    }
 
-  const startPayment = () => {
-    setCartOpen(false);
+    const payload = {
+      cliente,
+      carrito: cart.map((item) => ({
+        id_producto: item.id,
+        cantidad: item.cantidad,
+      })),
+    };
+
     setPaying(true);
-    window.setTimeout(() => {
+    setNotice("");
+    setNoticeIsError(false);
+
+    try {
+      const response = await api.post("/api/pedidos", payload);
+      if (response.status !== 200 && response.status !== 201) {
+        throw new Error("El servidor no pudo confirmar el pedido.");
+      }
+
+      setCartOpen(false);
       setCart([]);
-      setPaying(false);
       setView("catalog");
-      setNotice("Pago exitoso, pedido confirmado");
+      setNotice("Pedido confirmado correctamente.");
+      setNoticeIsError(false);
       window.setTimeout(() => setNotice(""), 4000);
-    }, 2000);
+    } catch (error) {
+      setNotice(
+        error.response?.data?.message ||
+          error.message ||
+          "No se pudo procesar el pedido. Inténtalo nuevamente.",
+      );
+      setNoticeIsError(true);
+    } finally {
+      setPaying(false);
+    }
   };
 
   const navigate = () => {
     setView("catalog");
     setNotice("");
+    setNoticeIsError(false);
   };
 
   return (
@@ -602,7 +860,7 @@ function App() {
           onRetry={() => setCatalogReload((current) => current + 1)}
         />
       )}
-      {view === "checkout" && <Checkout cart={cart} onBack={() => { setView("catalog"); setCartOpen(true); }} onPayment={startPayment} />}
+      {view === "checkout" && <Checkout cart={cart} onBack={() => { setView("catalog"); setCartOpen(true); }} onPayment={startPayment} paying={paying} />}
       <footer className="site-footer">
         <Brand onClick={() => navigate("catalog")} />
         <span>Pan hecho con tiempo, desde 2018.</span>
@@ -617,7 +875,12 @@ function App() {
         onRemove={(id) => setCart((current) => current.filter((item) => item.id !== id))}
         onCheckout={() => { setCartOpen(false); setView("checkout"); }}
       />
-      {notice && !paying && <div className="toast"><Check size={16} />{notice}</div>}
+      {notice && !paying && (
+        <div className={noticeIsError ? "toast toast-error" : "toast"} role={noticeIsError ? "alert" : "status"}>
+          {noticeIsError ? <X size={16} /> : <Check size={16} />}
+          {notice}
+        </div>
+      )}
       {paying && <PaymentOverlay />}
     </div>
   );
@@ -678,7 +941,6 @@ export function AdminApp() {
   const [validating, setValidating] = useState(Boolean(token));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [products, setProducts] = useState(initialProducts);
 
   useEffect(() => {
     if (!token) {
@@ -748,12 +1010,6 @@ export function AdminApp() {
     setError("");
   };
 
-  const updateStock = (id, stock) => {
-    setProducts((current) =>
-      current.map((product) => product.id === id ? { ...product, stock } : product),
-    );
-  };
-
   if (validating) {
     return <main className="admin-login-page" role="status">Validando acceso...</main>;
   }
@@ -762,7 +1018,7 @@ export function AdminApp() {
     return <AdminLogin onLogin={login} error={error} submitting={submitting} />;
   }
 
-  return <Admin products={products} onUpdateStock={updateStock} onLogout={logout} />;
+  return <Admin onLogout={logout} />;
 }
 
 export default App;

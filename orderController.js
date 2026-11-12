@@ -41,6 +41,37 @@ function readPrice(value) {
   return price;
 }
 
+function readCustomer(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RequestError(400, "cliente debe incluir nombre, email, direccion y telefono.");
+  }
+
+  const { nombre, email, direccion, telefono } = value;
+  if (
+    typeof nombre !== "string" ||
+    !nombre.trim() ||
+    nombre.trim().length > 100 ||
+    typeof email !== "string" ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+    email.trim().length > 100 ||
+    typeof direccion !== "string" ||
+    !direccion.trim() ||
+    direccion.trim().length > 255 ||
+    typeof telefono !== "string" ||
+    !telefono.trim() ||
+    telefono.trim().length > 30
+  ) {
+    throw new RequestError(400, "Los datos del cliente no son válidos.");
+  }
+
+  return {
+    nombre: nombre.trim(),
+    email: email.trim().toLowerCase(),
+    direccion: direccion.trim(),
+    telefono: telefono.trim(),
+  };
+}
+
 export async function getAdminOrders(request, response, next) {
   try {
     const [rows] = await pool.execute(
@@ -50,6 +81,9 @@ export async function getAdminOrders(request, response, next) {
         p.fecha,
         p.total,
         p.estado,
+        c.email,
+        c.direccion,
+        c.telefono,
         dp.id_producto,
         pr.nombre AS nombre_producto,
         dp.cantidad,
@@ -69,6 +103,9 @@ export async function getAdminOrders(request, response, next) {
         order = {
           id_pedido: row.id_pedido,
           nombre_cliente: row.nombre_cliente,
+          email: row.email,
+          direccion: row.direccion,
+          telefono: row.telefono,
           fecha: row.fecha,
           total: row.total,
           estado: row.estado,
@@ -125,11 +162,13 @@ export async function updateOrderStatus(request, response, next) {
 }
 
 export async function createOrder(request, response, next) {
-  const { id_cliente: customerId, carrito } = request.body ?? {};
-
-  if (!isPositiveInteger(customerId)) {
-    return response.status(400).json({ message: "id_cliente debe ser un entero positivo." });
+  let customer;
+  try {
+    customer = readCustomer(request.body?.cliente);
+  } catch (error) {
+    return handleRequestError(error, response, next);
   }
+  const { carrito } = request.body ?? {};
 
   if (
     !Array.isArray(carrito) ||
@@ -165,12 +204,26 @@ export async function createOrder(request, response, next) {
     await connection.beginTransaction();
     transactionStarted = true;
 
-    const [customers] = await connection.execute(
-      "SELECT id_cliente FROM Cliente WHERE id_cliente = ? FOR UPDATE",
-      [customerId],
+    const [existingCustomers] = await connection.execute(
+      "SELECT id_cliente FROM Cliente WHERE email = ? FOR UPDATE",
+      [customer.email],
     );
-    if (customers.length === 0) {
-      throw new RequestError(404, "El cliente indicado no existe.");
+    let customerId;
+    if (existingCustomers.length === 0) {
+      const [customerResult] = await connection.execute(
+        `INSERT INTO Cliente (nombre, email, direccion, telefono)
+        VALUES (?, ?, ?, ?)`,
+        [customer.nombre, customer.email, customer.direccion, customer.telefono],
+      );
+      customerId = customerResult.insertId;
+    } else {
+      await connection.execute(
+        `UPDATE Cliente
+        SET nombre = ?, direccion = ?, telefono = ?
+        WHERE email = ?`,
+        [customer.nombre, customer.direccion, customer.telefono, customer.email],
+      );
+      customerId = existingCustomers[0].id_cliente;
     }
 
     const productIds = [...quantities.keys()].sort((left, right) => left - right);

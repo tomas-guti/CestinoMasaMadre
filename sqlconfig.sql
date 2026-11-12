@@ -6,7 +6,9 @@ USE cestino_db;
 CREATE TABLE Cliente (
     id_cliente INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL
+    email VARCHAR(100) UNIQUE NOT NULL,
+    direccion VARCHAR(255),
+    telefono VARCHAR(30)
 ) ENGINE=InnoDB;
 
 CREATE TABLE Producto (
