@@ -7,8 +7,10 @@ CREATE TABLE Cliente (
     id_cliente INT AUTO_INCREMENT PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
-    direccion VARCHAR(255),
-    telefono VARCHAR(30)
+    telefono VARCHAR(30) NOT NULL,
+    calle VARCHAR(150) NOT NULL,
+    numero VARCHAR(30) NOT NULL,
+    comuna VARCHAR(100) NOT NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE Producto (
@@ -28,7 +30,8 @@ CREATE TABLE Pedido (
     id_cliente INT NOT NULL,
     fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
     total INT NOT NULL,
-    estado VARCHAR(50) NOT NULL DEFAULT 'Confirmado',
+    estado VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
+    INDEX idx_pedido_estado_fecha (estado, fecha),
     FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente)
 ) ENGINE=InnoDB;
 
@@ -44,7 +47,8 @@ CREATE TABLE Detalle_pedido (
 ) ENGINE=InnoDB;
 
 -- 4. Insertar datos de prueba para que el catálogo no esté vacío
-INSERT INTO Cliente (nombre, email) VALUES ('Cliente Prueba', 'prueba@cestino.cl');
+INSERT INTO Cliente (nombre, email, telefono, calle, numero, comuna)
+VALUES ('Cliente Prueba', 'prueba@cestino.cl', '+56900000000', 'Calle de prueba', '1', 'Santiago');
 
 INSERT INTO Producto (nombre, categoria, detalle, precio, stock, imagen, tag) VALUES
 ('Hogaza Clásica', 'Masa Madre', 'Hogaza tradicional fermentada por 24 horas.', 3500, 10, 'hogaza.jpg', 'Más Vendido'),

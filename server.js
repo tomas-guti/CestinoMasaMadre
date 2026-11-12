@@ -5,7 +5,9 @@ import express from "express";
 import { login } from "./authController.js";
 import authenticateToken from "./authMiddleware.js";
 import {
+  cleanupAbandonedOrders,
   createOrder,
+  deleteOrder,
   getAdminOrders,
   updateOrderStatus,
 } from "./orderController.js";
@@ -53,6 +55,7 @@ app.put("/api/productos/:id", authenticateToken, updateProduct);
 app.delete("/api/productos/:id", authenticateToken, deleteProduct);
 app.get("/api/pedidos/admin", authenticateToken, getAdminOrders);
 app.put("/api/pedidos/:id/estado", authenticateToken, updateOrderStatus);
+app.delete("/api/pedidos/:id", authenticateToken, deleteOrder);
 app.post("/api/pedidos", createOrder);
 app.get("/api/admin/session", authenticateToken, (request, response) => {
   const { email, role, expiresAt } = request.auth;
@@ -72,3 +75,20 @@ app.use((error, request, response, next) => {
 app.listen(port, () => {
   console.log(`Servidor escuchando en el puerto ${port}`);
 });
+
+let cleanupInProgress = false;
+setInterval(async () => {
+  if (cleanupInProgress) return;
+
+  cleanupInProgress = true;
+  try {
+    const deletedOrders = await cleanupAbandonedOrders();
+    if (deletedOrders > 0) {
+      console.log(`Limpieza automática: ${deletedOrders} pedidos pendientes expirados.`);
+    }
+  } catch (error) {
+    console.error("Error limpiando pedidos pendientes expirados:", error);
+  } finally {
+    cleanupInProgress = false;
+  }
+}, 60 * 1000);

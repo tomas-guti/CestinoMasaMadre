@@ -232,7 +232,14 @@ function CartDrawer({ open, cart, products, onClose, onChangeQuantity, onRemove,
 
 function Checkout({ cart, onBack, onPayment, paying }) {
   const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
-  const [form, setForm] = useState({ nombre: "", email: "", direccion: "", telefono: "" });
+  const [form, setForm] = useState({
+    nombre: "",
+    email: "",
+    telefono: "",
+    calle: "",
+    numero: "",
+    comuna: "",
+  });
   const [errors, setErrors] = useState({});
 
   const update = (event) => {
@@ -243,7 +250,9 @@ function Checkout({ cart, onBack, onPayment, paying }) {
     event.preventDefault();
     const nextErrors = {};
     if (!form.nombre.trim()) nextErrors.nombre = "Ingresa tu nombre.";
-    if (!form.direccion.trim()) nextErrors.direccion = "Ingresa una dirección de entrega.";
+    if (!form.calle.trim()) nextErrors.calle = "Ingresa una calle.";
+    if (!form.numero.trim()) nextErrors.numero = "Ingresa un número.";
+    if (!form.comuna.trim()) nextErrors.comuna = "Ingresa una comuna.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) nextErrors.email = "Ingresa un correo válido.";
     if (!form.telefono.trim()) nextErrors.telefono = "Ingresa un teléfono de contacto.";
     setErrors(nextErrors);
@@ -268,11 +277,6 @@ function Checkout({ cart, onBack, onPayment, paying }) {
               {errors.nombre && <small>{errors.nombre}</small>}
             </label>
             <label className="field">
-              <span>Dirección</span>
-              <input name="direccion" value={form.direccion} onChange={update} placeholder="Calle, número, comuna" autoComplete="street-address" />
-              {errors.direccion && <small>{errors.direccion}</small>}
-            </label>
-            <label className="field">
               <span>Correo electrónico</span>
               <input name="email" type="email" value={form.email} onChange={update} placeholder="tu@correo.com" autoComplete="email" />
               {errors.email && <small>{errors.email}</small>}
@@ -281,6 +285,21 @@ function Checkout({ cart, onBack, onPayment, paying }) {
               <span>Teléfono</span>
               <input name="telefono" type="tel" value={form.telefono} onChange={update} placeholder="+56 9 1234 5678" autoComplete="tel" maxLength={30} />
               {errors.telefono && <small>{errors.telefono}</small>}
+            </label>
+            <label className="field">
+              <span>Calle</span>
+              <input name="calle" value={form.calle} onChange={update} placeholder="Nombre de la calle" autoComplete="address-line1" maxLength={150} />
+              {errors.calle && <small>{errors.calle}</small>}
+            </label>
+            <label className="field">
+              <span>Número</span>
+              <input name="numero" value={form.numero} onChange={update} placeholder="Número y departamento" maxLength={30} />
+              {errors.numero && <small>{errors.numero}</small>}
+            </label>
+            <label className="field">
+              <span>Comuna</span>
+              <input name="comuna" value={form.comuna} onChange={update} placeholder="Comuna" autoComplete="address-level2" maxLength={100} />
+              {errors.comuna && <small>{errors.comuna}</small>}
             </label>
           </section>
           <section className="form-section payment-section">
@@ -620,7 +639,7 @@ function Admin({ onLogout }) {
           ) : (
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Pedido</th><th>Nombre</th><th>Email</th><th>Dirección</th><th>Teléfono</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Pedido</th><th>Nombre</th><th>Email</th><th>Calle</th><th>Número</th><th>Comuna</th><th>Teléfono</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
                 <tbody>
                   {orders.map((order) => {
                     const statuses = orderStatuses.includes(order.estado)
@@ -631,7 +650,9 @@ function Admin({ onLogout }) {
                         <td><strong>#{order.id_pedido}</strong></td>
                         <td>{order.nombre_cliente}</td>
                         <td>{order.email}</td>
-                        <td>{order.direccion}</td>
+                        <td>{order.calle}</td>
+                        <td>{order.numero}</td>
+                        <td>{order.comuna}</td>
                         <td>{order.telefono}</td>
                         <td>{formatOrderDate(order.fecha)}</td>
                         <td>{money(order.total)}</td>
@@ -790,17 +811,21 @@ function App() {
     const cliente = {
       nombre: customerDetails.nombre.trim(),
       email: customerDetails.email.trim(),
-      direccion: customerDetails.direccion.trim(),
       telefono: customerDetails.telefono.trim(),
+      calle: customerDetails.calle.trim(),
+      numero: customerDetails.numero.trim(),
+      comuna: customerDetails.comuna.trim(),
     };
     if (
       !cliente.nombre ||
       !cliente.email ||
-      !cliente.direccion ||
       !cliente.telefono ||
+      !cliente.calle ||
+      !cliente.numero ||
+      !cliente.comuna ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cliente.email)
     ) {
-      setNotice("Completa nombre, email, dirección y teléfono válidos antes de confirmar el pedido.");
+      setNotice("Completa nombre, email, teléfono, calle, número y comuna válidos antes de confirmar el pedido.");
       setNoticeIsError(true);
       return;
     }

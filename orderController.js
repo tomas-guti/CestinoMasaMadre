@@ -43,10 +43,13 @@ function readPrice(value) {
 
 function readCustomer(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new RequestError(400, "cliente debe incluir nombre, email, direccion y telefono.");
+    throw new RequestError(
+      400,
+      "cliente debe incluir nombre, email, telefono, calle, numero y comuna.",
+    );
   }
 
-  const { nombre, email, direccion, telefono } = value;
+  const { nombre, email, telefono, calle, numero, comuna } = value;
   if (
     typeof nombre !== "string" ||
     !nombre.trim() ||
@@ -54,12 +57,18 @@ function readCustomer(value) {
     typeof email !== "string" ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
     email.trim().length > 100 ||
-    typeof direccion !== "string" ||
-    !direccion.trim() ||
-    direccion.trim().length > 255 ||
     typeof telefono !== "string" ||
     !telefono.trim() ||
-    telefono.trim().length > 30
+    telefono.trim().length > 30 ||
+    typeof calle !== "string" ||
+    !calle.trim() ||
+    calle.trim().length > 150 ||
+    typeof numero !== "string" ||
+    !numero.trim() ||
+    numero.trim().length > 30 ||
+    typeof comuna !== "string" ||
+    !comuna.trim() ||
+    comuna.trim().length > 100
   ) {
     throw new RequestError(400, "Los datos del cliente no son válidos.");
   }
@@ -67,8 +76,10 @@ function readCustomer(value) {
   return {
     nombre: nombre.trim(),
     email: email.trim().toLowerCase(),
-    direccion: direccion.trim(),
     telefono: telefono.trim(),
+    calle: calle.trim(),
+    numero: numero.trim(),
+    comuna: comuna.trim(),
   };
 }
 
@@ -82,8 +93,10 @@ export async function getAdminOrders(request, response, next) {
         p.total,
         p.estado,
         c.email,
-        c.direccion,
         c.telefono,
+        c.calle,
+        c.numero,
+        c.comuna,
         dp.id_producto,
         pr.nombre AS nombre_producto,
         dp.cantidad,
@@ -104,8 +117,10 @@ export async function getAdminOrders(request, response, next) {
           id_pedido: row.id_pedido,
           nombre_cliente: row.nombre_cliente,
           email: row.email,
-          direccion: row.direccion,
           telefono: row.telefono,
+          calle: row.calle,
+          numero: row.numero,
+          comuna: row.comuna,
           fecha: row.fecha,
           total: row.total,
           estado: row.estado,
@@ -161,6 +176,120 @@ export async function updateOrderStatus(request, response, next) {
   }
 }
 
+export async function deleteOrder(request, response, next) {
+  let connection;
+  let transactionStarted = false;
+
+  try {
+    const id = readOrderId(request.params.id);
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [orders] = await connection.execute(
+      "SELECT id_pedido FROM Pedido WHERE id_pedido = ? FOR UPDATE",
+      [id],
+    );
+    if (orders.length === 0) {
+      throw new RequestError(404, "El pedido indicado no existe.");
+    }
+
+    await connection.execute(
+      "DELETE FROM Detalle_pedido WHERE id_pedido = ?",
+      [id],
+    );
+    await connection.execute(
+      "DELETE FROM Pedido WHERE id_pedido = ?",
+      [id],
+    );
+
+    await connection.commit();
+    transactionStarted = false;
+    return response.status(204).end();
+  } catch (error) {
+    if (transactionStarted && connection) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        return next(new AggregateError([error, rollbackError], "Falló la eliminación y su rollback."));
+      }
+    }
+    return handleRequestError(error, response, next);
+  } finally {
+    connection?.release();
+  }
+}
+
+export async function cleanupAbandonedOrders() {
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+
+  try {
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [orders] = await connection.execute(
+      `SELECT id_pedido
+      FROM Pedido
+      WHERE estado = 'Pendiente'
+        AND fecha < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 15 MINUTE)
+      ORDER BY id_pedido
+      FOR UPDATE`,
+    );
+    if (orders.length === 0) {
+      await connection.commit();
+      transactionStarted = false;
+      return 0;
+    }
+
+    const orderIds = orders.map((order) => order.id_pedido);
+    const placeholders = orderIds.map(() => "?").join(", ");
+    const [reservedProducts] = await connection.execute(
+      `SELECT id_producto, SUM(cantidad) AS cantidad
+      FROM Detalle_pedido
+      WHERE id_pedido IN (${placeholders})
+      GROUP BY id_producto
+      ORDER BY id_producto`,
+      orderIds,
+    );
+
+    for (const product of reservedProducts) {
+      await connection.execute(
+        "UPDATE Producto SET stock = stock + ? WHERE id_producto = ?",
+        [product.cantidad, product.id_producto],
+      );
+    }
+
+    await connection.execute(
+      `DELETE FROM Detalle_pedido
+      WHERE id_pedido IN (${placeholders})`,
+      orderIds,
+    );
+    await connection.execute(
+      `DELETE FROM Pedido
+      WHERE id_pedido IN (${placeholders})
+        AND estado = 'Pendiente'
+        AND fecha < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 15 MINUTE)`,
+      orderIds,
+    );
+
+    await connection.commit();
+    transactionStarted = false;
+    return orders.length;
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], "Falló la limpieza y su rollback.");
+      }
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 export async function createOrder(request, response, next) {
   let customer;
   try {
@@ -211,17 +340,31 @@ export async function createOrder(request, response, next) {
     let customerId;
     if (existingCustomers.length === 0) {
       const [customerResult] = await connection.execute(
-        `INSERT INTO Cliente (nombre, email, direccion, telefono)
-        VALUES (?, ?, ?, ?)`,
-        [customer.nombre, customer.email, customer.direccion, customer.telefono],
+        `INSERT INTO Cliente (nombre, email, telefono, calle, numero, comuna)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          customer.nombre,
+          customer.email,
+          customer.telefono,
+          customer.calle,
+          customer.numero,
+          customer.comuna,
+        ],
       );
       customerId = customerResult.insertId;
     } else {
       await connection.execute(
         `UPDATE Cliente
-        SET nombre = ?, direccion = ?, telefono = ?
+        SET nombre = ?, telefono = ?, calle = ?, numero = ?, comuna = ?
         WHERE email = ?`,
-        [customer.nombre, customer.direccion, customer.telefono, customer.email],
+        [
+          customer.nombre,
+          customer.telefono,
+          customer.calle,
+          customer.numero,
+          customer.comuna,
+          customer.email,
+        ],
       );
       customerId = existingCustomers[0].id_cliente;
     }
@@ -260,7 +403,7 @@ export async function createOrder(request, response, next) {
 
     const [orderResult] = await connection.execute(
       `INSERT INTO Pedido (id_cliente, fecha, total, estado)
-      VALUES (?, CURRENT_TIMESTAMP, ?, 'Confirmado')`,
+      VALUES (?, CURRENT_TIMESTAMP, ?, 'Pendiente')`,
       [customerId, total],
     );
     const orderId = orderResult.insertId;
