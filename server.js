@@ -5,7 +5,12 @@ import express from "express";
 import { login } from "./authController.js";
 import authenticateToken from "./authMiddleware.js";
 import { createOrder } from "./orderController.js";
-import { getProducts } from "./productController.js";
+import {
+  createProduct,
+  deleteProduct,
+  getProducts,
+  updateProduct,
+} from "./productController.js";
 
 const frontendOrigin = process.env.FRONTEND_ORIGIN;
 
@@ -39,6 +44,9 @@ const loginLimiter = rateLimit({
 
 app.post("/api/auth/login", loginLimiter, login);
 app.get("/api/productos", getProducts);
+app.post("/api/productos", authenticateToken, createProduct);
+app.put("/api/productos/:id", authenticateToken, updateProduct);
+app.delete("/api/productos/:id", authenticateToken, deleteProduct);
 app.post("/api/pedidos", createOrder);
 app.get("/api/admin/session", authenticateToken, (request, response) => {
   const { email, role, expiresAt } = request.auth;
