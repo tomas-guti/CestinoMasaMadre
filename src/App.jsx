@@ -448,6 +448,7 @@ function Admin({ onLogout }) {
   const [savingProduct, setSavingProduct] = useState(false);
   const [updatingOrders, setUpdatingOrders] = useState({});
   const [deletingOrders, setDeletingOrders] = useState({});
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -639,8 +640,27 @@ function Admin({ onLogout }) {
     }
   };
 
+  const openReceipt = (order) => {
+    setSelectedReceipt({
+      id_pedido: order.id_pedido,
+      numero_boleta: order.numero_boleta,
+      fecha: order.fecha,
+      total: order.total,
+      cliente: {
+        nombre: order.nombre_cliente,
+        email: order.email,
+        telefono: order.telefono,
+        calle: order.calle,
+        numero: order.numero,
+        comuna: order.comuna,
+      },
+      productos: order.productos,
+    });
+  };
+
   return (
-    <main className="admin-page">
+    <>
+    <main className={selectedReceipt ? "admin-page receipt-modal-open" : "admin-page"}>
       <div className="admin-heading">
         <div>
           <span className="eyebrow">Espacio de gestión</span>
@@ -761,7 +781,16 @@ function Admin({ onLogout }) {
                             {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
                           </select>
                         </td>
-                        <td>
+                        <td className="acciones">
+                          <button
+                            className="save-button order-receipt-button"
+                            type="button"
+                            disabled={!order.numero_boleta}
+                            title={!order.numero_boleta ? "Boleta disponible al confirmar el pago." : undefined}
+                            onClick={() => openReceipt(order)}
+                          >
+                            Ver Boleta
+                          </button>
                           <button
                             className="delete-button order-delete-button"
                             disabled={Boolean(deletingOrders[order.id_pedido] || updatingOrders[order.id_pedido])}
@@ -818,6 +847,29 @@ function Admin({ onLogout }) {
         </div>
       )}
     </main>
+    {selectedReceipt && (
+      <div
+        className="receipt-modal-backdrop"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedReceipt(null);
+        }}
+      >
+        <section
+          className="receipt-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Boleta ${selectedReceipt.numero_boleta}`}
+        >
+          <ElectronicReceipt
+            receipt={selectedReceipt}
+            onHome={() => setSelectedReceipt(null)}
+            closeLabel="Cerrar"
+            modal
+          />
+        </section>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -881,6 +933,82 @@ function PaymentSimulationModal({
   );
 }
 
+function ElectronicReceipt({
+  receipt,
+  onHome,
+  closeLabel = "Volver al Inicio",
+  modal = false,
+}) {
+  const { cliente, productos } = receipt;
+
+  return (
+    <main className={modal ? "receipt-page receipt-page-modal" : "receipt-page"}>
+      <article className="receipt-card">
+        <header className="receipt-header">
+          <span className="receipt-brand-mark">c.</span>
+          <span className="eyebrow">Cestino Masa Madre</span>
+          <h1>Boleta Electrónica</h1>
+          <p>Gracias por tu compra</p>
+          <div className="receipt-number">
+            <span>Número de boleta</span>
+            <strong>{receipt.numero_boleta}</strong>
+          </div>
+          <span className="receipt-date">{formatOrderDate(receipt.fecha)}</span>
+        </header>
+
+        <section className="receipt-customer" aria-labelledby="receipt-customer-heading">
+          <h2 id="receipt-customer-heading">Datos del cliente</h2>
+          <strong>{cliente.nombre}</strong>
+          <span>{cliente.email}</span>
+          <span>{cliente.telefono}</span>
+          <span>{cliente.calle} {cliente.numero}, {cliente.comuna}</span>
+        </section>
+
+        <section className="receipt-details" aria-labelledby="receipt-details-heading">
+          <h2 id="receipt-details-heading">Detalle de compra</h2>
+          <div className="receipt-table-wrap">
+            <table className="receipt-table">
+              <thead>
+                <tr>
+                  <th scope="col">Producto</th>
+                  <th scope="col">Cant.</th>
+                  <th scope="col">Precio</th>
+                  <th scope="col">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productos.map((producto, index) => (
+                  <tr key={`${producto.nombre}-${index}`}>
+                    <td>{producto.nombre}</td>
+                    <td>{producto.cantidad}</td>
+                    <td>{money(producto.precio_unitario)}</td>
+                    <td>{money(producto.subtotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th colSpan="3" scope="row">Total</th>
+                  <td>{money(receipt.total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <div className="receipt-actions">
+          <button className="outline-button" type="button" onClick={() => window.print()}>
+            Descargar Boleta (PDF)
+          </button>
+          <button className="primary-button" type="button" onClick={onHome}>
+            {closeLabel}
+          </button>
+        </div>
+      </article>
+    </main>
+  );
+}
+
 function App() {
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -892,6 +1020,7 @@ function App() {
   const [paying, setPaying] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [pendingOrder, setPendingOrder] = useState(null);
+  const [boletaData, setBoletaData] = useState(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [notice, setNotice] = useState("");
@@ -1035,14 +1164,11 @@ function App() {
         throw new Error("El servidor no pudo confirmar el pago.");
       }
 
-      setCart([]);
+      setBoletaData(response.data);
       setPendingOrder(null);
       setPaymentModalOpen(false);
-      setView("catalog");
+      setPaymentError("");
       setCatalogReload((current) => current + 1);
-      setNotice("Pago confirmado correctamente.");
-      setNoticeIsError(false);
-      window.setTimeout(() => setNotice(""), 4000);
     } catch (error) {
       setPaymentError(
         error.response?.data?.message ||
@@ -1071,58 +1197,75 @@ function App() {
     setNoticeIsError(false);
   };
 
+  const returnToCatalog = () => {
+    setBoletaData(null);
+    setCart([]);
+    setPendingOrder(null);
+    setPaymentModalOpen(false);
+    setCartOpen(false);
+    setView("catalog");
+    setNotice("");
+    setNoticeIsError(false);
+  };
+
   return (
     <div className="app">
-      <div className="announcement"><span>Horneamos cada mañana en Santiago</span><span>Pedidos hasta las 18:00 <ArrowRight size={13} /></span></div>
-      <Header view={view} cartCount={cartCount} onNavigate={navigate} onOpenCart={() => setCartOpen(true)} />
-      {view === "catalog" && (
-        <Catalog
-          products={products}
-          onAdd={addToCart}
-          loading={productsLoading}
-          error={productsError}
-          onRetry={() => setCatalogReload((current) => current + 1)}
-        />
-      )}
-      {view === "checkout" && (
-        <Checkout
-          cart={cart}
-          onBack={() => { setView("catalog"); setCartOpen(true); }}
-          onPayment={startPayment}
-          paying={paying}
-          pendingOrderId={pendingOrder?.id}
-          onResumePayment={resumePayment}
-        />
-      )}
-      <footer className="site-footer">
-        <Brand onClick={() => navigate("catalog")} />
-        <span>Pan hecho con tiempo, desde 2018.</span>
-        <span>© Cestino Masa Madre</span>
-      </footer>
-      <CartDrawer
-        open={cartOpen}
-        cart={cart}
-        products={products}
-        onClose={() => setCartOpen(false)}
-        onChangeQuantity={changeQuantity}
-        onRemove={(id) => setCart((current) => current.filter((item) => item.id !== id))}
-        onCheckout={() => { setCartOpen(false); setView("checkout"); }}
-      />
-      {notice && !paying && (
-        <div className={noticeIsError ? "toast toast-error" : "toast"} role={noticeIsError ? "alert" : "status"}>
-          {noticeIsError ? <X size={16} /> : <Check size={16} />}
-          {notice}
-        </div>
-      )}
-      {paymentModalOpen && pendingOrder && (
-        <PaymentSimulationModal
-          orderId={pendingOrder.id}
-          total={pendingOrder.total}
-          confirming={confirmingPayment}
-          error={paymentError}
-          onConfirm={confirmPayment}
-          onClose={closePaymentModal}
-        />
+      {boletaData ? (
+        <ElectronicReceipt receipt={boletaData} onHome={returnToCatalog} />
+      ) : (
+        <>
+          <div className="announcement"><span>Horneamos cada mañana en Santiago</span><span>Pedidos hasta las 18:00 <ArrowRight size={13} /></span></div>
+          <Header view={view} cartCount={cartCount} onNavigate={navigate} onOpenCart={() => setCartOpen(true)} />
+          {view === "catalog" && (
+            <Catalog
+              products={products}
+              onAdd={addToCart}
+              loading={productsLoading}
+              error={productsError}
+              onRetry={() => setCatalogReload((current) => current + 1)}
+            />
+          )}
+          {view === "checkout" && (
+            <Checkout
+              cart={cart}
+              onBack={() => { setView("catalog"); setCartOpen(true); }}
+              onPayment={startPayment}
+              paying={paying}
+              pendingOrderId={pendingOrder?.id}
+              onResumePayment={resumePayment}
+            />
+          )}
+          <footer className="site-footer">
+            <Brand onClick={() => navigate("catalog")} />
+            <span>Pan hecho con tiempo, desde 2018.</span>
+            <span>© Cestino Masa Madre</span>
+          </footer>
+          <CartDrawer
+            open={cartOpen}
+            cart={cart}
+            products={products}
+            onClose={() => setCartOpen(false)}
+            onChangeQuantity={changeQuantity}
+            onRemove={(id) => setCart((current) => current.filter((item) => item.id !== id))}
+            onCheckout={() => { setCartOpen(false); setView("checkout"); }}
+          />
+          {notice && !paying && (
+            <div className={noticeIsError ? "toast toast-error" : "toast"} role={noticeIsError ? "alert" : "status"}>
+              {noticeIsError ? <X size={16} /> : <Check size={16} />}
+              {notice}
+            </div>
+          )}
+          {paymentModalOpen && pendingOrder && (
+            <PaymentSimulationModal
+              orderId={pendingOrder.id}
+              total={pendingOrder.total}
+              confirming={confirmingPayment}
+              error={paymentError}
+              onConfirm={confirmPayment}
+              onClose={closePaymentModal}
+            />
+          )}
+        </>
       )}
     </div>
   );
